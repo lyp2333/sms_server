@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs cat)",
+      "Bash(python3 -m pip show fastapi)",
+      "Bash(pip show *)",
+      "Bash(pip3 show *)",
+      "Read(//usr/local/anaconda3/bin/**)",
+      "Bash(/usr/local/anaconda3/bin/python3 -m pip show fastapi)"
+    ]
+  }
+}

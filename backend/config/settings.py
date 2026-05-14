@@ -1,4 +1,5 @@
 import os
+import secrets
 from typing import Optional, Dict, Any
 from pydantic_settings import BaseSettings
 
@@ -16,6 +17,19 @@ class Settings(BaseSettings):
     # 应用配置
     app_title: str = "SMS 验证码接收服务"
     app_version: str = "1.0"
+
+    # Session 签名密钥（必须写入 .env 持久化，否则重启后 Cookie 失效）
+    secret_key: str = os.getenv("SECRET_KEY", secrets.token_hex(32))
+
+    # 卡密配置
+    card_key_length: int = 8
+    # 排除易混淆字符 O/0、I/1
+    card_key_charset: str = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+    # 限速配置
+    rate_limit_window: int = 60       # 滑动窗口秒数
+    rate_limit_max_fails: int = 5     # 窗口内最大失败次数
+    rate_limit_lockout: int = 300     # 锁定时长（秒）
     
     @property
     def requires_api_key(self) -> bool:

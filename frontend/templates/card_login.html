@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}输入卡密 - SMS 验证码服务{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-4 col-sm-8">
+        <div class="card shadow-lg border-0">
+            <div class="card-body p-5">
+                <div class="text-center mb-4">
+                    <i class="fas fa-key fa-3x text-primary mb-3"></i>
+                    <h4 class="fw-bold">访问验证</h4>
+                    <p class="text-muted small">请输入您的访问卡密以继续</p>
+                </div>
+
+                <div class="mb-3">
+                    <input
+                        type="text"
+                        id="cardCode"
+                        class="form-control form-control-lg text-center fw-bold"
+                        maxlength="8"
+                        placeholder="请输入8位卡密"
+                        style="letter-spacing: 4px; font-size: 1.3rem; text-transform: uppercase;"
+                        autocomplete="off"
+                        autocapitalize="characters"
+                    >
+                </div>
+
+                <div id="errorMsg" class="alert alert-danger text-center py-2 d-none" role="alert">
+                    <i class="fas fa-exclamation-circle me-1"></i>
+                    <span id="errorText"></span>
+                </div>
+
+                <div id="lockMsg" class="alert alert-warning text-center py-2 d-none" role="alert">
+                    <i class="fas fa-ban me-1"></i>
+                    <span id="lockText">尝试次数过多，请稍后再试</span>
+                </div>
+
+                <button id="submitBtn" class="btn btn-primary btn-lg w-100 mt-2" onclick="verifyCard()">
+                    <i class="fas fa-unlock-alt me-2"></i>验证卡密
+                </button>
+
+                <div class="text-center mt-3">
+                    <small class="text-muted">
+                        <i class="fas fa-shield-alt me-1"></i>
+                        卡密格式：8位大写字母和数字组合
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        {% if error %}
+        <div class="alert alert-danger mt-3 text-center">
+            <i class="fas fa-exclamation-triangle me-1"></i>{{ error }}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const cardInput = document.getElementById('cardCode');
+    const submitBtn = document.getElementById('submitBtn');
+    const errorMsg = document.getElementById('errorMsg');
+    const errorText = document.getElementById('errorText');
+    const lockMsg = document.getElementById('lockMsg');
+    const lockText = document.getElementById('lockText');
+
+    // 自动转大写
+    cardInput.addEventListener('input', function () {
+        this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    });
+
+    // 回车触发验证
+    cardInput.addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') verifyCard();
+    });
+
+    async function verifyCard() {
+        const code = cardInput.value.trim();
+
+        errorMsg.classList.add('d-none');
+        lockMsg.classList.add('d-none');
+
+        if (!code) {
+            showError('请输入卡密');
+            cardInput.focus();
+            return;
+        }
+
+        if (!/^[A-Z0-9]{8}$/.test(code)) {
+            showError('卡密格式错误，请输入8位大写字母和数字');
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>验证中...';
+
+        try {
+            const response = await fetch('/v1/card/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: code })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                submitBtn.innerHTML = '<i class="fas fa-check me-2"></i>验证成功，跳转中...';
+                submitBtn.classList.replace('btn-primary', 'btn-success');
+                // 跳转到原始请求页或主页
+                const redirect = new URLSearchParams(window.location.search).get('next') || '/';
+                window.location.href = redirect;
+            } else if (response.status === 429) {
+                lockMsg.classList.remove('d-none');
+                lockText.textContent = data.detail || '尝试次数过多，请稍后再试';
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-ban me-2"></i>已锁定';
+            } else {
+                showError(data.detail || '卡密无效或已过期');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-unlock-alt me-2"></i>验证卡密';
+                cardInput.select();
+            }
+        } catch (e) {
+            showError('网络错误，请稍后重试');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-unlock-alt me-2"></i>验证卡密';
+        }
+    }
+
+    function showError(msg) {
+        errorText.textContent = msg;
+        errorMsg.classList.remove('d-none');
+    }
+
+    // 页面加载后自动聚焦
+    document.addEventListener('DOMContentLoaded', function () {
+        cardInput.focus();
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,568 @@
+{% extends "base.html" %}
+
+{% block title %}卡密管理 - SMS 验证码服务{% endblock %}
+
+{% block styles %}
+<style>
+.card-key-badge {
+    font-family: 'Courier New', monospace;
+    font-size: 1rem;
+    letter-spacing: 2px;
+    font-weight: bold;
+}
+.status-badge { font-size: 0.75rem; }
+.admin-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 12px;
+    margin-bottom: 2rem;
+}
+.pagination .page-link { cursor: pointer; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- 管理员验证区域 -->
+<div id="authSection">
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-4">
+            <div class="card shadow">
+                <div class="card-body p-4">
+                    <div class="text-center mb-3">
+                        <i class="fas fa-shield-alt fa-2x text-primary"></i>
+                    </div>
+                    <h5 class="text-center mb-4">管理员验证</h5>
+                    <input type="password" id="adminPwd" class="form-control mb-2" placeholder="输入管理员密码">
+                    <div id="authError" class="text-danger text-center small mb-2 d-none"></div>
+                    <button id="authBtn" class="btn btn-primary w-100" onclick="verifyAdmin()">验证</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 管理面板 -->
+<div id="adminPanel" class="d-none">
+    <div class="admin-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h4><i class="fas fa-key me-2"></i>卡密管理面板</h4>
+                <p class="mb-0 opacity-75">管理访问卡密的创建、查询与删除</p>
+            </div>
+            <button class="btn btn-outline-light" onclick="logout()">
+                <i class="fas fa-sign-out-alt me-1"></i>退出
+            </button>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- 创建卡密 -->
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-plus-circle me-2 text-success"></i>创建新卡密</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">有效期</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="duration" id="d1" value="1" checked>
+                                <label class="form-check-label" for="d1">1天</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="duration" id="d3" value="3">
+                                <label class="form-check-label" for="d3">3天</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="duration" id="d7" value="7">
+                                <label class="form-check-label" for="d7">7天</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">生成数量</label>
+                        <input type="number" id="createCount" class="form-control" value="1" min="1" max="50">
+                    </div>
+                    <button class="btn btn-success w-100" onclick="createCards()">
+                        <i class="fas fa-magic me-1"></i>生成卡密
+                    </button>
+
+                    <!-- 新生成的卡密展示 -->
+                    <div id="newCards" class="mt-3 d-none">
+                        <div class="alert alert-success mb-0">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <strong><i class="fas fa-check-circle me-1"></i>生成成功！</strong>
+                                <button class="btn btn-sm btn-outline-success" onclick="copyAllCodes()">
+                                    <i class="fas fa-copy me-1"></i>全部复制
+                                </button>
+                            </div>
+                            <div id="newCardsList"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 统计信息 -->
+        <div class="col-lg-8 mb-4">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <div class="card text-center border-primary">
+                        <div class="card-body py-3">
+                            <i class="fas fa-list fa-2x text-primary mb-2"></i>
+                            <h4 id="totalCount">-</h4>
+                            <small class="text-muted">总卡密数</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card text-center border-success">
+                        <div class="card-body py-3">
+                            <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
+                            <h4 id="activeCount">-</h4>
+                            <small class="text-muted">激活中</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card text-center border-warning">
+                        <div class="card-body py-3">
+                            <i class="fas fa-clock fa-2x text-warning mb-2"></i>
+                            <h4 id="unusedCount">-</h4>
+                            <small class="text-muted">未激活</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-primary btn-sm" onclick="loadCards()">
+                    <i class="fas fa-sync-alt me-1"></i>刷新列表
+                </button>
+                <button class="btn btn-outline-danger btn-sm" onclick="cleanupExpired()">
+                    <i class="fas fa-broom me-1"></i>清理过期卡密
+                </button>
+                <button class="btn btn-outline-warning btn-sm" onclick="deleteInactive()">
+                    <i class="fas fa-trash-alt me-1"></i>删除未激活卡密
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 卡密列表 -->
+    <div class="card shadow-sm">
+        <div class="card-header">
+            <div class="row g-2 align-items-center">
+                <div class="col-auto">
+                    <h6 class="mb-0"><i class="fas fa-table me-2"></i>卡密列表</h6>
+                </div>
+                <div class="col">
+                    <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="搜索卡密..." oninput="renderTable()">
+                </div>
+                <div class="col-auto">
+                    <select id="filterStatus" class="form-select form-select-sm" onchange="renderTable()">
+                        <option value="">全部状态</option>
+                        <option value="unused">未激活</option>
+                        <option value="active">激活中</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <select id="filterDuration" class="form-select form-select-sm" onchange="renderTable()">
+                        <option value="">所有有效期</option>
+                        <option value="1">1天</option>
+                        <option value="3">3天</option>
+                        <option value="7">7天</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>卡密</th>
+                            <th>有效期</th>
+                            <th>状态</th>
+                            <th>激活时间</th>
+                            <th>到期时间</th>
+                            <th>创建时间</th>
+                            <th class="text-center">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cardsTableBody">
+                        <tr><td colspan="7" class="text-center text-muted py-4">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center">
+            <small class="text-muted" id="pageInfo">-</small>
+            <nav><ul class="pagination pagination-sm mb-0" id="pagination"></ul></nav>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let adminPassword = '';
+let allCards = [];       // 从后端拉取的全量数据
+let filteredCards = [];  // 过滤后的数据
+let currentPage = 1;
+const PAGE_SIZE = 10;
+let lastGeneratedCodes = [];  // 最后一次生成的卡密
+
+// ── 工具函数 ─────────────────────────────────────────────────────────────────
+
+/**
+ * 将 UTC 时间字符串转为北京时间显示
+ * 后端存的是 UTC naive datetime，ISO 字符串不带 Z，需补充
+ */
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    // 如果没有时区信息，补 Z 当 UTC 处理
+    const s = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
+    const d = new Date(s);
+    if (isNaN(d)) return dateStr;
+    return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
+}
+
+function showError(id, msg) {
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.classList.remove('d-none');
+    setTimeout(() => el.classList.add('d-none'), 3000);
+}
+
+// ── 管理员验证 ───────────────────────────────────────────────────────────────
+
+function verifyAdmin() {
+    const pwd = document.getElementById('adminPwd').value;
+    if (!pwd) { showError('authError', '请输入密码'); return; }
+
+    const btn = document.getElementById('authBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    fetch(`/v1/card/admin/list?admin_password=${encodeURIComponent(pwd)}`)
+    .then(r => {
+        if (r.ok) {
+            adminPassword = pwd;
+            document.getElementById('authSection').classList.add('d-none');
+            document.getElementById('adminPanel').classList.remove('d-none');
+            loadCards();
+        } else {
+            showError('authError', '密码错误');
+            btn.disabled = false;
+            btn.innerHTML = '验证';
+        }
+    }).catch(() => {
+        showError('authError', '网络错误');
+        btn.disabled = false;
+        btn.innerHTML = '验证';
+    });
+}
+
+function logout() {
+    adminPassword = '';
+    allCards = [];
+    filteredCards = [];
+    document.getElementById('adminPanel').classList.add('d-none');
+    document.getElementById('authSection').classList.remove('d-none');
+    document.getElementById('adminPwd').value = '';
+    // 恢复验证按钮状态
+    const btn = document.getElementById('authBtn');
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '验证';
+    }
+}
+
+// ── 数据加载 ─────────────────────────────────────────────────────────────────
+
+async function loadCards() {
+    const tbody = document.getElementById('cardsTableBody');
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3"><div class="spinner-border spinner-border-sm"></div> 加载中...</td></tr>';
+
+    try {
+        const r = await fetch(`/v1/card/admin/list?admin_password=${encodeURIComponent(adminPassword)}`);
+        const data = await r.json();
+
+        if (!r.ok) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">${data.detail || '加载失败'}</td></tr>`;
+            return;
+        }
+
+        allCards = data.cards || [];
+        updateStats(allCards);
+        currentPage = 1;
+        renderTable();
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-3">网络错误</td></tr>';
+    }
+}
+
+// ── 统计 ─────────────────────────────────────────────────────────────────────
+
+function updateStats(cards) {
+    const now = new Date();
+    const active = cards.filter(c => c.is_active && c.expires_at && new Date(c.expires_at + 'Z') > now).length;
+    const unused = cards.filter(c => !c.is_active).length;
+    document.getElementById('totalCount').textContent = cards.length;
+    document.getElementById('activeCount').textContent = active;
+    document.getElementById('unusedCount').textContent = unused;
+}
+
+// ── 前端过滤 + 分页渲染 ───────────────────────────────────────────────────────
+
+function getFilteredCards() {
+    const statusFilter = document.getElementById('filterStatus').value;
+    const durationFilter = document.getElementById('filterDuration').value;
+    const searchVal = document.getElementById('searchInput').value.trim().toUpperCase();
+    const now = new Date();
+
+    return allCards.filter(card => {
+        // 卡密搜索
+        if (searchVal && !card.code.includes(searchVal)) return false;
+
+        // 有效期过滤
+        if (durationFilter && String(card.duration_days) !== durationFilter) return false;
+
+        // 状态过滤（前端自己判断）
+        if (statusFilter === 'unused' && card.is_active) return false;
+        if (statusFilter === 'active') {
+            if (!card.is_active) return false;
+            if (card.expires_at && new Date(card.expires_at + 'Z') <= now) return false;
+        }
+
+        return true;
+    });
+}
+
+function renderTable() {
+    filteredCards = getFilteredCards();
+    const total = filteredCards.length;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const pageCards = filteredCards.slice(start, start + PAGE_SIZE);
+
+    const tbody = document.getElementById('cardsTableBody');
+    const now = new Date();
+
+    if (pageCards.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4"><i class="fas fa-inbox fa-2x mb-2 d-block"></i>暂无卡密</td></tr>';
+    } else {
+        tbody.innerHTML = pageCards.map(card => {
+            let statusBadge = '';
+            let rowClass = '';
+
+            if (!card.is_active) {
+                statusBadge = '<span class="badge bg-secondary status-badge">未激活</span>';
+            } else {
+                const expDate = card.expires_at ? new Date(card.expires_at + 'Z') : null;
+                if (expDate && expDate <= now) {
+                    statusBadge = '<span class="badge bg-danger status-badge">已过期</span>';
+                    rowClass = 'table-danger';
+                } else {
+                    const remaining = expDate ? Math.ceil((expDate - now) / 3600000) : 0;
+                    const cls = remaining < 24 ? 'bg-warning text-dark' : 'bg-success';
+                    statusBadge = `<span class="badge ${cls} status-badge">激活中 (剩${remaining}h)</span>`;
+                }
+            }
+
+            return `<tr class="${rowClass}">
+                <td><span class="card-key-badge text-primary">${card.code}</span></td>
+                <td><span class="badge bg-info">${card.duration_days}天</span></td>
+                <td>${statusBadge}</td>
+                <td class="text-muted small">${formatDate(card.activated_at)}</td>
+                <td class="text-muted small">${formatDate(card.expires_at)}</td>
+                <td class="text-muted small">${formatDate(card.created_at)}</td>
+                <td class="text-center">
+                    <button class="btn btn-sm btn-outline-secondary me-1" title="复制" onclick="copySingleCode('${card.code}', this)">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" title="删除" onclick="deleteCard('${card.code}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    // 页码信息
+    document.getElementById('pageInfo').textContent =
+        `共 ${total} 条，第 ${currentPage} / ${totalPages} 页`;
+
+    // 分页控件
+    renderPagination(totalPages);
+}
+
+function renderPagination(totalPages) {
+    const ul = document.getElementById('pagination');
+    ul.innerHTML = '';
+
+    const addItem = (label, page, disabled, active) => {
+        const li = document.createElement('li');
+        li.className = `page-item${disabled ? ' disabled' : ''}${active ? ' active' : ''}`;
+        li.innerHTML = `<a class="page-link">${label}</a>`;
+        if (!disabled && !active) li.addEventListener('click', () => { currentPage = page; renderTable(); });
+        ul.appendChild(li);
+    };
+
+    addItem('«', currentPage - 1, currentPage === 1, false);
+
+    // 显示最多7个页码
+    let startP = Math.max(1, currentPage - 3);
+    let endP = Math.min(totalPages, startP + 6);
+    if (endP - startP < 6) startP = Math.max(1, endP - 6);
+
+    for (let p = startP; p <= endP; p++) {
+        addItem(p, p, false, p === currentPage);
+    }
+
+    addItem('»', currentPage + 1, currentPage === totalPages, false);
+}
+
+// ── 创建卡密 ─────────────────────────────────────────────────────────────────
+
+async function createCards() {
+    const duration = parseInt(document.querySelector('input[name="duration"]:checked').value);
+    const count = parseInt(document.getElementById('createCount').value) || 1;
+
+    const r = await fetch('/v1/card/admin/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_password: adminPassword, duration_days: duration, count })
+    });
+
+    const data = await r.json();
+    if (r.ok) {
+        lastGeneratedCodes = data.codes || [];
+        const newCardsDiv = document.getElementById('newCards');
+        const newCardsList = document.getElementById('newCardsList');
+
+        const displayCodes = lastGeneratedCodes.slice(0, 5);
+        const extra = lastGeneratedCodes.length - 5;
+        newCardsList.innerHTML = displayCodes.map(c =>
+            `<div class="d-flex align-items-center justify-content-between mb-1">
+                <span class="card-key-badge">${c}</span>
+                <button class="btn btn-sm btn-link p-0 ms-2" title="复制" onclick="copySingleCode('${c}', this)">
+                    <i class="fas fa-copy text-success"></i>
+                </button>
+            </div>`
+        ).join('') + (extra > 0 ? `<div class="text-muted small mt-1">... 还有 ${extra} 个，点击「全部复制」获取所有卡密</div>` : '');
+
+        newCardsDiv.classList.remove('d-none');
+        // 刷新列表但不滚动
+        await loadCards();
+    } else {
+        alert(data.detail || '创建失败');
+    }
+}
+
+function downloadCodes() {
+    if (!lastGeneratedCodes.length) return;
+    const text = lastGeneratedCodes.join('\n');
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'card_keys.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+async function copyAllCodes() {
+    if (!lastGeneratedCodes.length) return;
+    // 超过5个直接下载txt
+    if (lastGeneratedCodes.length > 5) {
+        downloadCodes();
+        return;
+    }
+    const text = lastGeneratedCodes.join('\n');
+    const btn = event.target.closest('button');
+    const orig = btn.innerHTML;
+    try {
+        await navigator.clipboard.writeText(text);
+        btn.innerHTML = '<i class="fas fa-check me-1"></i>已复制';
+        btn.classList.replace('btn-outline-success', 'btn-success');
+        setTimeout(() => { btn.innerHTML = orig; btn.classList.replace('btn-success', 'btn-outline-success'); }, 2000);
+    } catch (e) {
+        // 备用：下载文件
+        downloadCodes();
+    }
+}
+
+// ── 删除 ─────────────────────────────────────────────────────────────────────
+
+async function deleteCard(code) {
+    if (!confirm(`确认删除卡密 ${code}？`)) return;
+
+    const r = await fetch(`/v1/card/admin/${code}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_password: adminPassword })
+    });
+
+    const data = await r.json();
+    if (r.ok) {
+        loadCards();
+    } else {
+        alert(data.detail || '删除失败');
+    }
+}
+
+// ── 清理过期 ─────────────────────────────────────────────────────────────────
+
+async function cleanupExpired() {
+    const r = await fetch('/v1/card/admin/cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_password: adminPassword })
+    });
+    const data = await r.json();
+    alert(data.message || '清理完成');
+    loadCards();
+}
+
+// ── 删除未激活卡密 ────────────────────────────────────────────────────────────
+
+async function deleteInactive() {
+    const inactiveCount = allCards.filter(c => !c.is_active).length;
+    if (inactiveCount === 0) {
+        alert('当前没有未激活的卡密');
+        return;
+    }
+    if (!confirm(`确认删除全部 ${inactiveCount} 个未激活卡密？此操作不可撤销。`)) return;
+    const r = await fetch('/v1/card/admin/cleanup-unused', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_password: adminPassword })
+    });
+    const data = await r.json();
+    alert(data.message || '删除完成');
+    loadCards();
+}
+
+// ── 复制单个卡密 ─────────────────────────────────────────────────────────────
+
+function copySingleCode(code, btn) {
+    navigator.clipboard.writeText(code).then(() => {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check text-success"></i>';
+        setTimeout(() => btn.innerHTML = orig, 1500);
+    });
+}
+
+// ── 回车触发验证 ─────────────────────────────────────────────────────────────
+document.getElementById('adminPwd').addEventListener('keypress', e => {
+    if (e.key === 'Enter') verifyAdmin();
+});
+</script>
+{% endblock %}

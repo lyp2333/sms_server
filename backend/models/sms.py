@@ -4,6 +4,8 @@ from datetime import datetime
 import os
 from backend.config.settings import settings
 
+VALID_DURATIONS = {1, 3, 7}
+
 # 确保数据目录存在
 def ensure_data_directory():
     # 从数据库URL中提取文件路径
@@ -40,6 +42,16 @@ class SMSRecord(SQLModel, table=True):
 class AdminPassword(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     password: str = Field(...)  # 管理员密码
+
+# 卡密表
+class CardKey(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    code: str = Field(..., unique=True, index=True, max_length=8)  # 明文卡密
+    duration_days: int = Field(...)                                     # 1 / 3 / 7
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    activated_at: Optional[datetime] = Field(default=None)            # 首次使用时间
+    expires_at: Optional[datetime] = Field(default=None)              # 到期时间
+    is_active: bool = Field(default=False)
 
 # 创建表结构
 def create_db_and_tables():
