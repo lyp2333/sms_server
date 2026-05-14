@@ -13,7 +13,7 @@ lockout_until: Dict[str, float] = {}
 
 WINDOW = 60       # 滑动窗口（秒）
 MAX_FAILS = 5     # 最大失败次数
-LOCKOUT = 300     # 锁定时长（秒）
+LOCKOUT = 60      # 锁定时长（秒）
 
 
 def is_ip_locked(ip: str) -> bool:
