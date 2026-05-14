@@ -44,6 +44,7 @@ logs/
 # IDE相关
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 .project
