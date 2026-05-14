@@ -108,8 +108,10 @@ document.addEventListener("DOMContentLoaded", function () {
     // 初始化工具提示
     initializeTooltips();
 
-    // 加载短信记录
-    loadSMSRecords(currentPage);
+    // 加载短信记录（仅在存在短信表格的页面执行）
+    if (smsRecordsTable) {
+        loadSMSRecords(currentPage);
+    }
 
     // 监听窗口大小变化，调整表格显示
     window.addEventListener('resize', function () {

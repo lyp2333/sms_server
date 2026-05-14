@@ -202,27 +202,74 @@
             <nav><ul class="pagination pagination-sm mb-0" id="pagination"></ul></nav>
         </div>
     </div>
+
+    <!-- 短信历史记录 -->
+    <div class="card shadow-sm mt-4">
+        <div class="card-header bg-gradient-info">
+            <div class="d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-history me-2"></i>
+                    <h5 class="card-title mb-0">短信历史记录</h5>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-light" onclick="smsLoadRecords(1)" title="刷新">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="smsDeleteAll()" title="删除全部">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0" id="smsAdminTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>短信内容</th>
+                            <th>验证码</th>
+                            <th>接收时间</th>
+                            <th class="text-center">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="smsAdminTbody">
+                        <tr><td colspan="4" class="text-center text-muted py-4">通过验证后自动加载</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="smsLoadingIndicator" class="text-center my-4 d-none">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="mt-2 text-muted">正在加载短信记录...</p>
+            </div>
+            <div id="smsNoRecords" class="text-center my-4 d-none">
+                <i class="fas fa-inbox fa-3x text-muted mb-2"></i>
+                <p class="text-muted">暂无短信记录</p>
+            </div>
+            <div class="table-pagination p-3">
+                <nav><ul class="pagination justify-content-center mb-0" id="smsPagination"></ul></nav>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 let adminPassword = '';
-let allCards = [];       // 从后端拉取的全量数据
-let filteredCards = [];  // 过滤后的数据
+let allCards = [];
+let filteredCards = [];
 let currentPage = 1;
 const PAGE_SIZE = 10;
-let lastGeneratedCodes = [];  // 最后一次生成的卡密
+let lastGeneratedCodes = [];
+
+// SMS 分页状态
+let smsCurrentPage = 1;
+const SMS_PAGE_SIZE = 10;
 
 // ── 工具函数 ─────────────────────────────────────────────────────────────────
 
-/**
- * 将 UTC 时间字符串转为北京时间显示
- * 后端存的是 UTC naive datetime，ISO 字符串不带 Z，需补充
- */
 function formatDate(dateStr) {
     if (!dateStr) return '-';
-    // 如果没有时区信息，补 Z 当 UTC 处理
     const s = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
     const d = new Date(s);
     if (isNaN(d)) return dateStr;
@@ -234,6 +281,16 @@ function showError(id, msg) {
     el.textContent = msg;
     el.classList.remove('d-none');
     setTimeout(() => el.classList.add('d-none'), 3000);
+}
+
+function maskSensitiveInfo(text) {
+    if (!text) return '';
+    return text.replace(/1[3-9]\d{9}/g, m => m.substring(0, 3) + '****' + m.substring(m.length - 4));
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 }
 
 // ── 管理员验证 ───────────────────────────────────────────────────────────────
@@ -252,7 +309,10 @@ function verifyAdmin() {
             adminPassword = pwd;
             document.getElementById('authSection').classList.add('d-none');
             document.getElementById('adminPanel').classList.remove('d-none');
+            btn.disabled = false;
+            btn.innerHTML = '验证';
             loadCards();
+            smsLoadRecords(1);
         } else {
             showError('authError', '密码错误');
             btn.disabled = false;
@@ -272,15 +332,11 @@ function logout() {
     document.getElementById('adminPanel').classList.add('d-none');
     document.getElementById('authSection').classList.remove('d-none');
     document.getElementById('adminPwd').value = '';
-    // 恢复验证按钮状态
     const btn = document.getElementById('authBtn');
-    if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = '验证';
-    }
+    if (btn) { btn.disabled = false; btn.innerHTML = '验证'; }
 }
 
-// ── 数据加载 ─────────────────────────────────────────────────────────────────
+// ── 卡密数据加载 ─────────────────────────────────────────────────────────────
 
 async function loadCards() {
     const tbody = document.getElementById('cardsTableBody');
@@ -289,12 +345,10 @@ async function loadCards() {
     try {
         const r = await fetch(`/v1/card/admin/list?admin_password=${encodeURIComponent(adminPassword)}`);
         const data = await r.json();
-
         if (!r.ok) {
             tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">${data.detail || '加载失败'}</td></tr>`;
             return;
         }
-
         allCards = data.cards || [];
         updateStats(allCards);
         currentPage = 1;
@@ -303,8 +357,6 @@ async function loadCards() {
         tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-3">网络错误</td></tr>';
     }
 }
-
-// ── 统计 ─────────────────────────────────────────────────────────────────────
 
 function updateStats(cards) {
     const now = new Date();
@@ -315,28 +367,19 @@ function updateStats(cards) {
     document.getElementById('unusedCount').textContent = unused;
 }
 
-// ── 前端过滤 + 分页渲染 ───────────────────────────────────────────────────────
-
 function getFilteredCards() {
     const statusFilter = document.getElementById('filterStatus').value;
     const durationFilter = document.getElementById('filterDuration').value;
     const searchVal = document.getElementById('searchInput').value.trim().toUpperCase();
     const now = new Date();
-
     return allCards.filter(card => {
-        // 卡密搜索
         if (searchVal && !card.code.includes(searchVal)) return false;
-
-        // 有效期过滤
         if (durationFilter && String(card.duration_days) !== durationFilter) return false;
-
-        // 状态过滤（前端自己判断）
         if (statusFilter === 'unused' && card.is_active) return false;
         if (statusFilter === 'active') {
             if (!card.is_active) return false;
             if (card.expires_at && new Date(card.expires_at + 'Z') <= now) return false;
         }
-
         return true;
     });
 }
@@ -346,10 +389,8 @@ function renderTable() {
     const total = filteredCards.length;
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     if (currentPage > totalPages) currentPage = totalPages;
-
     const start = (currentPage - 1) * PAGE_SIZE;
     const pageCards = filteredCards.slice(start, start + PAGE_SIZE);
-
     const tbody = document.getElementById('cardsTableBody');
     const now = new Date();
 
@@ -357,9 +398,7 @@ function renderTable() {
         tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4"><i class="fas fa-inbox fa-2x mb-2 d-block"></i>暂无卡密</td></tr>';
     } else {
         tbody.innerHTML = pageCards.map(card => {
-            let statusBadge = '';
-            let rowClass = '';
-
+            let statusBadge = '', rowClass = '';
             if (!card.is_active) {
                 statusBadge = '<span class="badge bg-secondary status-badge">未激活</span>';
             } else {
@@ -373,7 +412,6 @@ function renderTable() {
                     statusBadge = `<span class="badge ${cls} status-badge">激活中 (剩${remaining}h)</span>`;
                 }
             }
-
             return `<tr class="${rowClass}">
                 <td><span class="card-key-badge text-primary">${card.code}</span></td>
                 <td><span class="badge bg-info">${card.duration_days}天</span></td>
@@ -393,18 +431,13 @@ function renderTable() {
         }).join('');
     }
 
-    // 页码信息
-    document.getElementById('pageInfo').textContent =
-        `共 ${total} 条，第 ${currentPage} / ${totalPages} 页`;
-
-    // 分页控件
+    document.getElementById('pageInfo').textContent = `共 ${total} 条，第 ${currentPage} / ${totalPages} 页`;
     renderPagination(totalPages);
 }
 
 function renderPagination(totalPages) {
     const ul = document.getElementById('pagination');
     ul.innerHTML = '';
-
     const addItem = (label, page, disabled, active) => {
         const li = document.createElement('li');
         li.className = `page-item${disabled ? ' disabled' : ''}${active ? ' active' : ''}`;
@@ -412,18 +445,11 @@ function renderPagination(totalPages) {
         if (!disabled && !active) li.addEventListener('click', () => { currentPage = page; renderTable(); });
         ul.appendChild(li);
     };
-
     addItem('«', currentPage - 1, currentPage === 1, false);
-
-    // 显示最多7个页码
     let startP = Math.max(1, currentPage - 3);
     let endP = Math.min(totalPages, startP + 6);
     if (endP - startP < 6) startP = Math.max(1, endP - 6);
-
-    for (let p = startP; p <= endP; p++) {
-        addItem(p, p, false, p === currentPage);
-    }
-
+    for (let p = startP; p <= endP; p++) addItem(p, p, false, p === currentPage);
     addItem('»', currentPage + 1, currentPage === totalPages, false);
 }
 
@@ -432,19 +458,16 @@ function renderPagination(totalPages) {
 async function createCards() {
     const duration = parseInt(document.querySelector('input[name="duration"]:checked').value);
     const count = parseInt(document.getElementById('createCount').value) || 1;
-
     const r = await fetch('/v1/card/admin/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ admin_password: adminPassword, duration_days: duration, count })
     });
-
     const data = await r.json();
     if (r.ok) {
         lastGeneratedCodes = data.codes || [];
         const newCardsDiv = document.getElementById('newCards');
         const newCardsList = document.getElementById('newCardsList');
-
         const displayCodes = lastGeneratedCodes.slice(0, 5);
         const extra = lastGeneratedCodes.length - 5;
         newCardsList.innerHTML = displayCodes.map(c =>
@@ -455,9 +478,7 @@ async function createCards() {
                 </button>
             </div>`
         ).join('') + (extra > 0 ? `<div class="text-muted small mt-1">... 还有 ${extra} 个，点击「全部复制」获取所有卡密</div>` : '');
-
         newCardsDiv.classList.remove('d-none');
-        // 刷新列表但不滚动
         await loadCards();
     } else {
         alert(data.detail || '创建失败');
@@ -470,21 +491,14 @@ function downloadCodes() {
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = 'card_keys.txt';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    a.href = url; a.download = 'card_keys.txt';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
 async function copyAllCodes() {
     if (!lastGeneratedCodes.length) return;
-    // 超过5个直接下载txt
-    if (lastGeneratedCodes.length > 5) {
-        downloadCodes();
-        return;
-    }
+    if (lastGeneratedCodes.length > 5) { downloadCodes(); return; }
     const text = lastGeneratedCodes.join('\n');
     const btn = event.target.closest('button');
     const orig = btn.innerHTML;
@@ -493,32 +507,21 @@ async function copyAllCodes() {
         btn.innerHTML = '<i class="fas fa-check me-1"></i>已复制';
         btn.classList.replace('btn-outline-success', 'btn-success');
         setTimeout(() => { btn.innerHTML = orig; btn.classList.replace('btn-success', 'btn-outline-success'); }, 2000);
-    } catch (e) {
-        // 备用：下载文件
-        downloadCodes();
-    }
+    } catch (e) { downloadCodes(); }
 }
 
-// ── 删除 ─────────────────────────────────────────────────────────────────────
+// ── 卡密删除 ─────────────────────────────────────────────────────────────────
 
 async function deleteCard(code) {
     if (!confirm(`确认删除卡密 ${code}？`)) return;
-
     const r = await fetch(`/v1/card/admin/${code}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ admin_password: adminPassword })
     });
-
     const data = await r.json();
-    if (r.ok) {
-        loadCards();
-    } else {
-        alert(data.detail || '删除失败');
-    }
+    if (r.ok) loadCards(); else alert(data.detail || '删除失败');
 }
-
-// ── 清理过期 ─────────────────────────────────────────────────────────────────
 
 async function cleanupExpired() {
     const r = await fetch('/v1/card/admin/cleanup', {
@@ -531,14 +534,9 @@ async function cleanupExpired() {
     loadCards();
 }
 
-// ── 删除未激活卡密 ────────────────────────────────────────────────────────────
-
 async function deleteInactive() {
     const inactiveCount = allCards.filter(c => !c.is_active).length;
-    if (inactiveCount === 0) {
-        alert('当前没有未激活的卡密');
-        return;
-    }
+    if (inactiveCount === 0) { alert('当前没有未激活的卡密'); return; }
     if (!confirm(`确认删除全部 ${inactiveCount} 个未激活卡密？此操作不可撤销。`)) return;
     const r = await fetch('/v1/card/admin/cleanup-unused', {
         method: 'POST',
@@ -550,14 +548,251 @@ async function deleteInactive() {
     loadCards();
 }
 
-// ── 复制单个卡密 ─────────────────────────────────────────────────────────────
-
 function copySingleCode(code, btn) {
     navigator.clipboard.writeText(code).then(() => {
         const orig = btn.innerHTML;
         btn.innerHTML = '<i class="fas fa-check text-success"></i>';
         setTimeout(() => btn.innerHTML = orig, 1500);
     });
+}
+
+// ── 短信历史记录 ─────────────────────────────────────────────────────────────
+
+async function smsLoadRecords(page) {
+    smsCurrentPage = page;
+    const limit = SMS_PAGE_SIZE;
+    const offset = (page - 1) * limit;
+
+    document.getElementById('smsLoadingIndicator').classList.remove('d-none');
+    document.getElementById('smsNoRecords').classList.add('d-none');
+    document.getElementById('smsAdminTbody').innerHTML = '';
+
+    try {
+        const r = await fetch(`/v1/sms/history?limit=${limit}&offset=${offset}`);
+        if (!r.ok) throw new Error('网络响应异常');
+        const records = await r.json();
+
+        document.getElementById('smsLoadingIndicator').classList.add('d-none');
+
+        if (records.length === 0) {
+            document.getElementById('smsNoRecords').classList.remove('d-none');
+            document.getElementById('smsPagination').innerHTML = '';
+            return;
+        }
+
+        smsRenderRecords(records);
+        smsRenderPagination(page, limit, records.length === limit);
+    } catch (e) {
+        document.getElementById('smsLoadingIndicator').classList.add('d-none');
+        document.getElementById('smsAdminTbody').innerHTML =
+            `<tr><td colspan="4" class="text-center text-danger py-3"><i class="fas fa-exclamation-circle me-1"></i>加载失败: ${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+function smsRenderRecords(records) {
+    const tbody = document.getElementById('smsAdminTbody');
+    tbody.innerHTML = records.map(record => {
+        const date = new Date(record.receive_time);
+        const formattedDate = date.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
+        const maskedSMS = maskSensitiveInfo(record.sms || '');
+        const codeEl = record.extracted_code
+            ? `<span class="badge bg-success">${record.extracted_code}</span>`
+            : `<span class="badge bg-secondary">未提取</span>`;
+        return `<tr>
+            <td class="text-truncate" style="max-width:300px" title="${escapeHtml(maskedSMS)}">${escapeHtml(maskedSMS)}</td>
+            <td>${codeEl}</td>
+            <td class="text-muted small">${formattedDate}</td>
+            <td class="text-center">
+                <button class="btn btn-sm btn-outline-primary" onclick="smsViewDetail(${record.id})" title="查看详情">
+                    <i class="fas fa-eye"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger ms-1" onclick="smsDeleteRecord(${record.id})" title="删除">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function smsRenderPagination(page, limit, hasMore) {
+    const ul = document.getElementById('smsPagination');
+    ul.innerHTML = '';
+
+    const prevLi = document.createElement('li');
+    prevLi.className = `page-item ${page === 1 ? 'disabled' : ''}`;
+    prevLi.innerHTML = `<a class="page-link" href="#" aria-label="上一页">«</a>`;
+    const prevA = prevLi.querySelector('a');
+    if (prevA) prevA.addEventListener('click', e => { e.preventDefault(); if (page > 1) smsLoadRecords(page - 1); });
+    ul.appendChild(prevLi);
+
+    const curLi = document.createElement('li');
+    curLi.className = 'page-item active';
+    curLi.innerHTML = `<a class="page-link" href="#">${page}</a>`;
+    ul.appendChild(curLi);
+
+    const nextLi = document.createElement('li');
+    nextLi.className = `page-item ${!hasMore ? 'disabled' : ''}`;
+    nextLi.innerHTML = `<a class="page-link" href="#" aria-label="下一页">»</a>`;
+    const nextA = nextLi.querySelector('a');
+    if (nextA) nextA.addEventListener('click', e => { e.preventDefault(); if (hasMore) smsLoadRecords(page + 1); });
+    ul.appendChild(nextLi);
+}
+
+async function smsViewDetail(smsId) {
+    try {
+        const r = await fetch(`/v1/sms/${smsId}`);
+        if (!r.ok) throw new Error('获取详情失败');
+        const data = await r.json();
+
+        const maskedSMS = maskSensitiveInfo(data.sms || '');
+        const modalHtml = `
+            <div class="modal fade" id="smsDetailModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title"><i class="fas fa-envelope me-2"></i>短信详情 #${data.id}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="fw-bold text-muted small">发送方</label>
+                                    <div>${escapeHtml(maskSensitiveInfo(data.from_ || data.from || ''))}</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="fw-bold text-muted small">接收时间</label>
+                                    <div>${new Date(data.receive_time).toLocaleString('zh-CN', {timeZone:'Asia/Shanghai',hour12:false})}</div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="fw-bold text-muted small">短信内容</label>
+                                <div class="p-3 bg-light rounded">${escapeHtml(maskedSMS).replace(/\n/g,'<br>')}</div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label class="fw-bold text-muted small">提取验证码</label>
+                                    <div>${data.extracted_code ? `<code class="fs-5 fw-bold text-success">${data.extracted_code}</code>` : '<span class="badge bg-secondary">未提取</span>'}</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="fw-bold text-muted small">手机号</label>
+                                    <div>${escapeHtml(maskSensitiveInfo(data.phone_number || '未提取'))}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            ${data.extracted_code ? `<button type="button" class="btn btn-success" onclick="navigator.clipboard.writeText('${data.extracted_code}').then(()=>alert('验证码已复制'))"><i class="fas fa-copy me-1"></i>复制验证码</button>` : ''}
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+        const container = document.createElement('div');
+        container.innerHTML = modalHtml;
+        document.body.appendChild(container);
+        const modal = new bootstrap.Modal(document.getElementById('smsDetailModal'));
+        modal.show();
+        document.getElementById('smsDetailModal').addEventListener('hidden.bs.modal', () => container.remove());
+    } catch (e) {
+        alert('获取详情失败: ' + e.message);
+    }
+}
+
+async function smsDeleteRecord(smsId) {
+    if (!confirm(`确认删除该短信记录？`)) return;
+    try {
+        const r = await fetch(`/v1/sms/${smsId}`, { method: 'DELETE' });
+        if (r.ok) {
+            smsLoadRecords(smsCurrentPage);
+        } else {
+            const data = await r.json();
+            alert(data.detail || '删除失败');
+        }
+    } catch (e) {
+        alert('删除失败: ' + e.message);
+    }
+}
+
+function smsDeleteAll() {
+    if (!confirm('确认删除所有短信记录？此操作不可恢复！')) return;
+    showSmsDeletePasswordModal();
+}
+
+function showSmsDeletePasswordModal() {
+    const modalHtml = `
+        <div class="modal fade" id="smsDeletePwdModal">
+            <div class="modal-dialog modal-dialog-centered modal-sm">
+                <div class="modal-content rounded-3 shadow">
+                    <div class="modal-body p-4">
+                        <div class="text-center mb-3"><i class="fas fa-lock text-secondary fa-2x"></i></div>
+                        <h6 class="text-center mb-3">输入管理员密码确认删除</h6>
+                        <input type="password" class="form-control rounded-pill mb-2 ps-3" id="smsDeletePwdInput" placeholder="输入密码" autocomplete="off">
+                        <div id="smsDeletePwdError" class="text-danger text-center small d-none"></div>
+                        <div class="d-flex gap-2 mt-3">
+                            <button type="button" class="btn btn-light rounded-pill flex-fill" data-bs-dismiss="modal">取消</button>
+                            <button type="button" class="btn btn-danger rounded-pill flex-fill" id="smsDeleteConfirmBtn">确认</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+    const container = document.createElement('div');
+    container.innerHTML = modalHtml;
+    document.body.appendChild(container);
+    const modalEl = document.getElementById('smsDeletePwdModal');
+    const modal = new bootstrap.Modal(modalEl);
+    const inputEl = document.getElementById('smsDeletePwdInput');
+    const errorDiv = document.getElementById('smsDeletePwdError');
+    const confirmBtn = document.getElementById('smsDeleteConfirmBtn');
+
+    confirmBtn.addEventListener('click', async () => {
+        const pwd = inputEl.value;
+        if (!pwd) { errorDiv.textContent = '请输入密码'; errorDiv.classList.remove('d-none'); return; }
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        try {
+            const vr = await fetch('/v1/sms/admin/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: pwd })
+            });
+            if (vr.ok) {
+                modal.hide();
+                setTimeout(async () => {
+                    container.remove();
+                    const dr = await fetch('/v1/sms/history', {
+                        method: 'DELETE',
+                        headers: { 'x-api-key': pwd }
+                    });
+                    const data = await dr.json();
+                    if (dr.ok) {
+                        alert(data.message || '删除成功');
+                        smsLoadRecords(1);
+                    } else {
+                        alert(data.detail || '删除失败');
+                    }
+                }, 200);
+            } else {
+                errorDiv.textContent = '密码错误';
+                errorDiv.classList.remove('d-none');
+                inputEl.value = '';
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = '确认';
+                setTimeout(() => errorDiv.classList.add('d-none'), 2000);
+            }
+        } catch (e) {
+            errorDiv.textContent = '网络错误';
+            errorDiv.classList.remove('d-none');
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = '确认';
+        }
+    });
+
+    inputEl.addEventListener('keypress', e => { if (e.key === 'Enter') confirmBtn.click(); });
+    modalEl.addEventListener('hidden.bs.modal', () => container.remove());
+    modal.show();
+    setTimeout(() => inputEl.focus(), 200);
 }
 
 // ── 回车触发验证 ─────────────────────────────────────────────────────────────

@@ -14,10 +14,9 @@ After=network.target
 
 [Service]
 User=root
-WorkingDirectory=/home/ubuntu/code/sms_server-main
-EnvironmentFile=/home/ubuntu/code/sms_server-main/.env
-Environment="PYTHONPATH=/home/ubuntu/miniconda3/envs/sms/bin/python"
-ExecStart=/bin/bash -c "cd /home/ubuntu/code/sms_server-main && sudo conda activate sms && python backend/main.py"
+WorkingDirectory=/home/lyp/code/sms_server
+EnvironmentFile=/home/lyp/code/sms_server/.env
+ExecStart=/home/lyp/.conda/envs/sms/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8322
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -37,4 +36,3 @@ systemctl start sms-webhook.service
 echo "SMS Webhook服务已安装并启动"
 echo "查看状态: systemctl status sms-webhook.service"
 echo "查看日志: journalctl -u sms-webhook.service"
-echo "访问服务: http://124.223.117.7:$(grep -oP 'PORT=\K[0-9]+' /root/project/sms_server/.env 2>/dev/null || echo 8322)"
