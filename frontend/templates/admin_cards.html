@@ -423,6 +423,7 @@ function renderTable() {
                     <button class="btn btn-sm btn-outline-secondary me-1" title="复制" onclick="copySingleCode('${card.code}', this)">
                         <i class="fas fa-copy"></i>
                     </button>
+                    ${card.is_active && card.expires_at && new Date(card.expires_at + 'Z') > now ? `<button class="btn btn-sm btn-outline-warning me-1" title="使失效" onclick="expireCard('${card.code}')"><i class="fas fa-ban"></i></button>` : ''}
                     <button class="btn btn-sm btn-outline-danger" title="删除" onclick="deleteCard('${card.code}')">
                         <i class="fas fa-trash"></i>
                     </button>
@@ -510,6 +511,19 @@ async function copyAllCodes() {
     } catch (e) { downloadCodes(); }
 }
 
+// ── 卡密失效 ─────────────────────────────────────────────────────────────────
+
+async function expireCard(code) {
+    if (!confirm(`确认使卡密 ${code} 立即失效？`)) return;
+    const r = await fetch(`/v1/card/admin/${code}/expire`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_password: adminPassword })
+    });
+    const data = await r.json();
+    if (r.ok) loadCards(); else alert(data.detail || '操作失败');
+}
+
 // ── 卡密删除 ─────────────────────────────────────────────────────────────────
 
 async function deleteCard(code) {
@@ -568,7 +582,7 @@ async function smsLoadRecords(page) {
     document.getElementById('smsAdminTbody').innerHTML = '';
 
     try {
-        const r = await fetch(`/v1/sms/history?limit=${limit}&offset=${offset}`);
+        const r = await fetch(`/v1/sms/history?limit=${limit}&offset=${offset}&admin_password=${encodeURIComponent(adminPassword)}`);
         if (!r.ok) throw new Error('网络响应异常');
         const records = await r.json();
 
@@ -640,7 +654,7 @@ function smsRenderPagination(page, limit, hasMore) {
 
 async function smsViewDetail(smsId) {
     try {
-        const r = await fetch(`/v1/sms/${smsId}`);
+        const r = await fetch(`/v1/sms/${smsId}?admin_password=${encodeURIComponent(adminPassword)}`);
         if (!r.ok) throw new Error('获取详情失败');
         const data = await r.json();
 
@@ -701,7 +715,10 @@ async function smsViewDetail(smsId) {
 async function smsDeleteRecord(smsId) {
     if (!confirm(`确认删除该短信记录？`)) return;
     try {
-        const r = await fetch(`/v1/sms/${smsId}`, { method: 'DELETE' });
+        const r = await fetch(`/v1/sms/${smsId}`, {
+            method: 'DELETE',
+            headers: { 'x-api-key': adminPassword }
+        });
         if (r.ok) {
             smsLoadRecords(smsCurrentPage);
         } else {
@@ -765,6 +782,7 @@ function showSmsDeletePasswordModal() {
                         method: 'DELETE',
                         headers: { 'x-api-key': pwd }
                     });
+
                     const data = await dr.json();
                     if (dr.ok) {
                         alert(data.message || '删除成功');

@@ -309,6 +309,28 @@ async def delete_card(
     return {"result": "ok", "message": f"卡密 {code.upper()} 已删除"}
 
 
+@card_router.post("/admin/{code}/expire")
+async def expire_card(
+    code: str,
+    body: AdminPasswordRequest,
+    session: Session = Depends(get_session),
+):
+    """使卡密立即失效（管理员）"""
+    if not verify_admin(body.admin_password, session):
+        raise HTTPException(status_code=403, detail="管理员密码错误")
+
+    card = session.exec(select(CardKey).where(CardKey.code == code.upper())).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="卡密不存在")
+    if not card.is_active:
+        raise HTTPException(status_code=400, detail="卡密尚未激活，无需失效")
+
+    card.expires_at = datetime.utcnow()
+    session.add(card)
+    session.commit()
+    return {"result": "ok", "message": f"卡密 {code.upper()} 已设为失效"}
+
+
 @card_router.post("/admin/cleanup")
 async def manual_cleanup(
     body: AdminPasswordRequest,

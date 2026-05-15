@@ -1,6 +1,6 @@
 import asyncio
 import hashlib
-from fastapi import APIRouter, HTTPException, Header, Query, Depends
+from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request
 from sqlmodel import Session, select
 from typing import Optional, List
 from datetime import datetime, timedelta
@@ -13,6 +13,7 @@ from backend.services.sms_service import (
     query_latest_code
 )
 from backend.config.settings import settings
+from backend.services.auth_service import require_valid_card
 
 
 def hash_password(password: str) -> str:
@@ -85,10 +86,21 @@ async def get_sms_code(
 # 历史记录接口
 @router.get("/history", response_model=List[SMSRecord])
 async def list_sms(
-    limit: int = Query(20), 
+    request: Request,
+    limit: int = Query(20),
     offset: int = Query(0),
-    session: Session = Depends(get_session)
+    admin_password: Optional[str] = Query(None),
+    session: Session = Depends(get_session),
 ):
+    # 管理员密码鉴权 或 Cookie 鉴权，二选一
+    if admin_password:
+        admin = session.exec(select(AdminPassword)).first()
+        if not admin or not verify_password(admin_password, admin.password):
+            raise HTTPException(status_code=403, detail="管理员密码错误")
+    else:
+        from backend.services.auth_service import get_card_from_request
+        if get_card_from_request(request) is None:
+            raise HTTPException(status_code=302, headers={"Location": "/login"}, detail="请先登录")
     records = session.exec(
         select(SMSRecord).order_by(SMSRecord.receive_time.desc()).offset(offset).limit(limit)
     ).all()
@@ -97,9 +109,20 @@ async def list_sms(
 # 获取单条短信详情
 @router.get("/{sms_id}", response_model=SMSRecord)
 async def get_sms_detail(
+    request: Request,
     sms_id: int,
-    session: Session = Depends(get_session)
+    admin_password: Optional[str] = Query(None),
+    session: Session = Depends(get_session),
 ):
+    # 管理员密码鉴权 或 Cookie 鉴权，二选一
+    if admin_password:
+        admin = session.exec(select(AdminPassword)).first()
+        if not admin or not verify_password(admin_password, admin.password):
+            raise HTTPException(status_code=403, detail="管理员密码错误")
+    else:
+        from backend.services.auth_service import get_card_from_request
+        if get_card_from_request(request) is None:
+            raise HTTPException(status_code=302, headers={"Location": "/login"}, detail="请先登录")
     record = session.get(SMSRecord, sms_id)
     if not record:
         raise HTTPException(status_code=404, detail="短信记录不存在")
@@ -157,7 +180,10 @@ async def delete_sms(
     session: Session = Depends(get_session),
     x_api_key: Optional[str] = Header(None)
 ):
-    check_api_key(x_api_key)
+    # 验证管理员密码
+    admin = session.exec(select(AdminPassword)).first()
+    if not admin or not verify_password(x_api_key or "", admin.password):
+        raise HTTPException(status_code=403, detail="您没有权限，无法执行删除操作")
     record = session.get(SMSRecord, sms_id)
     if not record:
         raise HTTPException(status_code=404, detail="短信记录不存在")

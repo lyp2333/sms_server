@@ -3,10 +3,10 @@
 {% block title %}SMS 验证码服务 - 首页{% endblock %}
 
 {% block content %}
-{% if card_expires_in_hours is defined and card_expires_in_hours < 24 %}
-<div class="alert alert-warning text-center mb-3 rounded-0 border-0" style="background:#fff3cd;">
-    <i class="fas fa-exclamation-triangle me-1"></i>
-    您的访问卡密将在 <strong>{{ card_expires_in_hours }}</strong> 小时后过期，请联系商家续期。
+{% if card_expires_timestamp is defined and card_expires_timestamp %}
+<div class="alert text-center mb-3 rounded-0 border-0" id="countdownBanner" style="background:#fff3cd;">
+    <i class="fas fa-clock me-1"></i>
+    卡密剩余时间：<strong id="countdownTimer">计算中...</strong>
 </div>
 {% endif %}
 <div class="row">
@@ -259,6 +259,7 @@
                     body: JSON.stringify({ password: password })
                 });
 
+                if (response.status === 401 || response.status === 403) { window.location.href = '/login'; return; }
                 if (response.ok) {
                     modal.hide();
                     setTimeout(() => {
@@ -293,6 +294,82 @@
         setTimeout(() => inputEl.focus(), 200);
     }
 
+    // 卡密过期提示弹窗
+    let _expiredAlertShown = false;
+    function showExpiredAlert() {
+        if (_expiredAlertShown) return;
+        _expiredAlertShown = true;
+        const alertHtml = `
+            <div class="modal fade" id="expiredModal" data-bs-backdrop="static">
+                <div class="modal-dialog modal-dialog-centered modal-sm">
+                    <div class="modal-content rounded-3 shadow">
+                        <div class="modal-body p-4 text-center">
+                            <i class="fas fa-exclamation-circle text-danger fa-3x mb-3"></i>
+                            <h5 class="mb-2">卡密已过期</h5>
+                            <p class="text-muted mb-3">您的访问卡密已过期，请重新登录。</p>
+                            <a href="/login" class="btn btn-primary rounded-pill px-4">前往登录</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        const container = document.createElement('div');
+        container.innerHTML = alertHtml;
+        document.body.appendChild(container);
+        const modal = new bootstrap.Modal(document.getElementById('expiredModal'));
+        modal.show();
+    }
+
+    // 全局拦截 302/401/403 -> 卡密过期提示（排除密码验证接口）
+    const _origFetch = window.fetch;
+    window.fetch = async function(...args) {
+        const url = (args[0] || '').toString();
+        const response = await _origFetch(...args);
+        if ((response.status === 401 || response.status === 403 || response.status === 302)
+            && !url.includes('/v1/sms/admin/verify')
+            && !url.includes('/v1/card/admin')) {
+            showExpiredAlert();
+            return new Response(JSON.stringify({detail: '卡密已过期'}), {status: response.status, headers: {'Content-Type': 'application/json'}});
+        }
+        return response;
+    };
+
+    // 卡密倒计时
+    {% if card_expires_timestamp %}
+    (function() {
+        const expiresAt = {{ card_expires_timestamp }} * 1000;
+        const timerEl = document.getElementById('countdownTimer');
+        const bannerEl = document.getElementById('countdownBanner');
+
+        function updateCountdown() {
+            const now = Date.now();
+            const diff = expiresAt - now;
+            if (diff <= 0) {
+                timerEl.textContent = '已过期';
+                bannerEl.style.background = '#f8d7da';
+                bannerEl.classList.add('alert-danger');
+                bannerEl.classList.remove('alert-warning');
+                return;
+            }
+            const days = Math.floor(diff / 86400000);
+            const hours = Math.floor((diff % 86400000) / 3600000);
+            const minutes = Math.floor((diff % 3600000) / 60000);
+            const seconds = Math.floor((diff % 60000) / 1000);
+            const pad = n => String(n).padStart(2, '0');
+            timerEl.textContent = `${days}天${hours}小时${minutes}分钟${seconds}秒`;
+            if (diff < 3600000) {
+                bannerEl.style.background = '#f8d7da';
+            } else if (diff < 86400000) {
+                bannerEl.style.background = '#fff3cd';
+            } else {
+                bannerEl.style.background = '#d1ecf1';
+            }
+        }
+        updateCountdown();
+        setInterval(updateCountdown, 1000);
+    })();
+    {% endif %}
+
     // 执行删除操作
     async function executeDeleteAll(password) {
         console.log('executeDeleteAll called, password:', password ? 'provided' : 'empty');
@@ -307,6 +384,7 @@
                     'x-api-key': password || ''
                 }
             });
+            if (response.status === 401 || response.status === 403) { window.location.href = '/login'; return; }
             console.log('DELETE response status:', response.status);
 
             const data = await response.json();

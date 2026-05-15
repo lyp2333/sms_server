@@ -160,6 +160,10 @@ document.addEventListener("DOMContentLoaded", function () {
         // 获取短信记录
         fetch(`/v1/sms/history?limit=${limit}&offset=${offset}`)
             .then(response => {
+                if (response.status === 401 || response.status === 403) {
+                    window.location.href = '/login';
+                    throw new Error('会话已过期，正在跳转登录页...');
+                }
                 if (!response.ok) {
                     throw new Error('网络响应异常');
                 }
@@ -361,6 +365,10 @@ document.addEventListener("DOMContentLoaded", function () {
         // 发送请求
         fetch(url)
             .then(response => {
+                if (response.status === 401 || response.status === 403) {
+                    window.location.href = '/login';
+                    throw new Error('会话已过期，正在跳转登录页...');
+                }
                 if (!response.ok) {
                     throw new Error('网络响应异常');
                 }
@@ -455,6 +463,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         fetch(`/v1/sms/${smsId}`)
             .then(response => {
+                if (response.status === 401 || response.status === 403) {
+                    window.location.href = '/login';
+                    throw new Error('会话已过期，正在跳转登录页...');
+                }
                 if (!response.ok) {
                     throw new Error('网络响应异常');
                 }

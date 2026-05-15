@@ -111,14 +111,21 @@ async def index(request: Request):
 
     # 计算剩余时间
     remaining_hours = None
+    card_expires_timestamp = None
     if card.expires_at:
         delta = card.expires_at - datetime.utcnow()
         remaining_hours = max(0, int(delta.total_seconds() / 3600))
+        # expires_at 是 UTC naive datetime，用 calendar.timegm 避免本地时区偏差
+        import calendar
+        card_expires_timestamp = calendar.timegm(card.expires_at.timetuple())
 
     return templates.TemplateResponse(
         request=request,
         name="index.html",
-        context={"card_expires_in_hours": remaining_hours},
+        context={
+            "card_expires_in_hours": remaining_hours,
+            "card_expires_timestamp": card_expires_timestamp,
+        },
     )
 
 

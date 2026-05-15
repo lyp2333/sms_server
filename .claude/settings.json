@@ -6,7 +6,13 @@
       "Bash(pip show *)",
       "Bash(pip3 show *)",
       "Read(//usr/local/anaconda3/bin/**)",
-      "Bash(/usr/local/anaconda3/bin/python3 -m pip show fastapi)"
+      "Bash(/usr/local/anaconda3/bin/python3 -m pip show fastapi)",
+      "Bash(fuser -k 8322/tcp)",
+      "Bash(curl -s -X POST http://localhost:8322/v1/card/admin/TESTCODE/expire -H \"Content-Type: application/json\" -d '{\"admin_password\":\"test\"}')",
+      "Bash(kill *)",
+      "Bash(pkill *)",
+      "Bash(nohup *)",
+      "Bash(pgrep *)"
     ]
   }
 }
