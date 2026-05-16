@@ -134,9 +134,12 @@ async def delete_all_sms(
     session: Session = Depends(get_session),
     x_api_key: Optional[str] = Header(None)
 ):
-    # 验证数据库中的管理员密码（通过哈希验证）
+    # 验证：.env 中的 API_KEY 或 数据库管理员密码，任一通过即可
+    key = x_api_key or ""
+    api_key_valid = settings.requires_api_key and key == settings.api_key
     admin = session.exec(select(AdminPassword)).first()
-    if not admin or not verify_password(x_api_key or "", admin.password):
+    admin_pass_valid = admin is not None and verify_password(key, admin.password)
+    if not api_key_valid and not admin_pass_valid:
         raise HTTPException(status_code=403, detail="您没有权限，无法执行删除操作")
     records = session.exec(select(SMSRecord)).all()
     count = 0
@@ -180,9 +183,12 @@ async def delete_sms(
     session: Session = Depends(get_session),
     x_api_key: Optional[str] = Header(None)
 ):
-    # 验证管理员密码
+    # 验证：.env 中的 API_KEY 或 数据库管理员密码，任一通过即可
+    key = x_api_key or ""
+    api_key_valid = settings.requires_api_key and key == settings.api_key
     admin = session.exec(select(AdminPassword)).first()
-    if not admin or not verify_password(x_api_key or "", admin.password):
+    admin_pass_valid = admin is not None and verify_password(key, admin.password)
+    if not api_key_valid and not admin_pass_valid:
         raise HTTPException(status_code=403, detail="您没有权限，无法执行删除操作")
     record = session.get(SMSRecord, sms_id)
     if not record:
