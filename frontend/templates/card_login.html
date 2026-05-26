@@ -135,9 +135,16 @@
         errorMsg.classList.remove('d-none');
     }
 
-    // 页面加载后自动聚焦
+    // 页面加载后：检查 URL 参数是否有 code，有则自动提交
     document.addEventListener('DOMContentLoaded', function () {
-        cardInput.focus();
+        const params = new URLSearchParams(window.location.search);
+        const codeParam = params.get('code');
+        if (codeParam && /^[A-Z0-9]{8}$/.test(codeParam.toUpperCase())) {
+            cardInput.value = codeParam.toUpperCase();
+            verifyCard();
+        } else {
+            cardInput.focus();
+        }
     });
 </script>
 {% endblock %}
