@@ -135,8 +135,9 @@ async def login_page(request: Request):
     # 如果已经有有效 Cookie，直接跳转主页
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if token:
-        card = await require_valid_card(request)
-        if not isinstance(card, RedirectResponse):
+        from backend.services.auth_service import get_card_from_request
+        card = get_card_from_request(request)
+        if card is not None:
             return RedirectResponse(url="/", status_code=302)
     return templates.TemplateResponse(request=request, name="card_login.html")
 

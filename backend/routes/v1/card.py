@@ -36,6 +36,12 @@ class CreateCardRequest(BaseModel):
 class AdminPasswordRequest(BaseModel):
     admin_password: str
 
+
+class ExtendDaysRequest(BaseModel):
+    admin_password: str
+    days: int
+
+
 class CardResponse(BaseModel):
     code: str
     duration_days: int
@@ -48,7 +54,7 @@ class CardResponse(BaseModel):
 
 # ── 内部工具函数 ──────────────────────────────────────────────────────────────
 
-VALID_DURATION_DAYS = {1, 3, 7}
+VALID_DURATION_DAYS = {1, 3, 7, 15, 30}
 CARD_RE = re.compile(r'^[A-Z0-9]{8}$')
 
 
@@ -329,6 +335,47 @@ async def expire_card(
     session.add(card)
     session.commit()
     return {"result": "ok", "message": f"卡密 {code.upper()} 已设为失效"}
+
+
+@card_router.post("/admin/{code}/extend")
+async def extend_card_days(
+    code: str,
+    body: ExtendDaysRequest,
+    session: Session = Depends(get_session),
+):
+    """延长卡密有效天数（管理员）"""
+    if not verify_admin(body.admin_password, session):
+        raise HTTPException(status_code=403, detail="管理员密码错误")
+
+    card = session.exec(select(CardKey).where(CardKey.code == code.upper())).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="卡密不存在")
+
+    # 未激活的卡密不能增加天数
+    if not card.is_active:
+        raise HTTPException(status_code=400, detail="卡密尚未激活，无法增加天数")
+
+    # 如果卡密已过期，删除旧记录重新创建激活流程
+    if card.expires_at and datetime.utcnow() > card.expires_at:
+        session.delete(card)
+        session.commit()
+        card = CardKey(
+            code=code.upper(),
+            duration_days=body.days,
+            is_active=True,
+            activated_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(days=body.days),
+        )
+        session.add(card)
+        session.commit()
+        session.refresh(card)
+        return {"result": "ok", "message": f"卡密 {code.upper()} 已过期，原卡密已删除，新卡密已激活，有效期 {body.days} 天"}
+
+    # 延长有效期
+    card.expires_at = card.expires_at + timedelta(days=body.days)
+    session.add(card)
+    session.commit()
+    return {"result": "ok", "message": f"已延长 {body.days} 天，新到期时间: {card.expires_at.strftime('%Y-%m-%d %H:%M:%S')}"}
 
 
 @card_router.post("/admin/cleanup")

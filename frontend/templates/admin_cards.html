@@ -33,9 +33,17 @@
                         <i class="fas fa-shield-alt fa-2x text-primary"></i>
                     </div>
                     <h5 class="text-center mb-4">管理员验证</h5>
-                    <input type="password" id="adminPwd" class="form-control mb-2" placeholder="输入管理员密码">
+                    <div class="input-group mb-3">
+                        <span class="input-group-text bg-transparent border-end-0"><i class="fas fa-lock text-muted"></i></span>
+                        <input type="password" id="adminPwd" class="form-control border-start-0 ps-2" placeholder="输入管理员密码" style="border-left: 0;">
+                        <button type="button" class="btn btn-outline-secondary border-start-0" onclick="togglePassword()" id="togglePwdBtn" title="显示密码">
+                            <i class="fas fa-eye" id="eyeIcon"></i>
+                        </button>
+                    </div>
                     <div id="authError" class="text-danger text-center small mb-2 d-none"></div>
-                    <button id="authBtn" class="btn btn-primary w-100" onclick="verifyAdmin()">验证</button>
+                    <button id="authBtn" class="btn btn-primary w-100 py-2 fw-bold" onclick="verifyAdmin()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;">
+                        <i class="fas fa-check me-1"></i>验证
+                    </button>
                 </div>
             </div>
         </div>
@@ -78,6 +86,14 @@
                             <div class="form-check">
                                 <input class="form-check-input" type="radio" name="duration" id="d7" value="7">
                                 <label class="form-check-label" for="d7">7天</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="duration" id="d15" value="15">
+                                <label class="form-check-label" for="d15">15天</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="duration" id="d30" value="30">
+                                <label class="form-check-label" for="d30">30天</label>
                             </div>
                         </div>
                     </div>
@@ -137,9 +153,6 @@
                 </div>
             </div>
             <div class="d-flex gap-2">
-                <button class="btn btn-outline-primary btn-sm" onclick="loadCards()">
-                    <i class="fas fa-sync-alt me-1"></i>刷新列表
-                </button>
                 <button class="btn btn-outline-danger btn-sm" onclick="cleanupExpired()">
                     <i class="fas fa-broom me-1"></i>清理过期卡密
                 </button>
@@ -157,8 +170,19 @@
                 <div class="col-auto">
                     <h6 class="mb-0"><i class="fas fa-table me-2"></i>卡密列表</h6>
                 </div>
+                <div class="col-auto">
+                    <button class="btn btn-outline-primary btn-sm" onclick="loadCards()">
+                        <i class="fas fa-sync-alt me-1"></i>刷新
+                    </button>
+                </div>
                 <div class="col">
-                    <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="搜索卡密..." oninput="renderTable()">
+                    <div class="position-relative">
+                        <i class="fas fa-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
+                        <input type="text" id="searchInput" class="form-control form-control-sm ps-5 pe-5" placeholder="搜索卡密..." oninput="renderTable(); toggleSearchClear(this)">
+                        <button type="button" class="btn btn-sm position-absolute top-50 end-0 translate-middle-y me-1 p-0 border-0 bg-transparent text-muted d-none" id="searchClearBtn" onclick="clearSearch()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="col-auto">
                     <select id="filterStatus" class="form-select form-select-sm" onchange="renderTable()">
@@ -251,6 +275,26 @@
         </div>
     </div>
 </div>
+
+<!-- 增加天数模态框 -->
+<div class="modal fade" id="extendModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content rounded-3">
+            <div class="modal-body p-4 text-center">
+                <h6 class="mb-3">为卡密 <span id="extendModalCode" class="text-primary"></span> 增加天数</h6>
+                <div class="d-grid gap-2 mb-3">
+                    <button class="btn btn-outline-primary" onclick="doExtend(1)">+1天</button>
+                    <button class="btn btn-outline-primary" onclick="doExtend(3)">+3天</button>
+                </div>
+                <div class="input-group mb-3">
+                    <input type="number" id="extendCustomDays" class="form-control" min="1" value="1" placeholder="自定义天数">
+                    <button class="btn btn-outline-primary" onclick="doExtend(parseInt(document.getElementById('extendCustomDays').value) || 1)">+N天</button>
+                </div>
+                <button class="btn btn-light w-100" data-bs-dismiss="modal">取消</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -291,6 +335,20 @@ function maskSensitiveInfo(text) {
 function escapeHtml(text) {
     if (!text) return '';
     return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+// ── 密码显示/隐藏 ─────────────────────────────────────────────────────────────
+
+function togglePassword() {
+    const pwdInput = document.getElementById('adminPwd');
+    const eyeIcon = document.getElementById('eyeIcon');
+    if (pwdInput.type === 'password') {
+        pwdInput.type = 'text';
+        eyeIcon.classList.replace('fa-eye', 'fa-eye-slash');
+    } else {
+        pwdInput.type = 'password';
+        eyeIcon.classList.replace('fa-eye-slash', 'fa-eye');
+    }
 }
 
 // ── 管理员验证 ───────────────────────────────────────────────────────────────
@@ -334,6 +392,23 @@ function logout() {
     document.getElementById('adminPwd').value = '';
     const btn = document.getElementById('authBtn');
     if (btn) { btn.disabled = false; btn.innerHTML = '验证'; }
+}
+
+// ── 搜索框辅助函数 ────────────────────────────────────────────────────────────
+
+function toggleSearchClear(input) {
+    const clearBtn = document.getElementById('searchClearBtn');
+    if (input.value.length > 0) {
+        clearBtn.classList.remove('d-none');
+    } else {
+        clearBtn.classList.add('d-none');
+    }
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('searchClearBtn').classList.add('d-none');
+    renderTable();
 }
 
 // ── 卡密数据加载 ─────────────────────────────────────────────────────────────
@@ -422,6 +497,9 @@ function renderTable() {
                 <td class="text-center">
                     <button class="btn btn-sm btn-outline-secondary me-1" title="复制" onclick="copySingleCode('${card.code}', this)">
                         <i class="fas fa-copy"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-success me-1" title="增加天数" onclick="showExtendModal('${card.code}')">
+                        <i class="fas fa-plus"></i> 增加天数
                     </button>
                     ${card.is_active && card.expires_at && new Date(card.expires_at + 'Z') > now ? `<button class="btn btn-sm btn-outline-warning me-1" title="使失效" onclick="expireCard('${card.code}')"><i class="fas fa-ban"></i></button>` : ''}
                     <button class="btn btn-sm btn-outline-danger" title="删除" onclick="deleteCard('${card.code}')">
@@ -522,6 +600,34 @@ async function expireCard(code) {
     });
     const data = await r.json();
     if (r.ok) loadCards(); else alert(data.detail || '操作失败');
+}
+
+// ── 卡密增加天数（模态框） ───────────────────────────────────────────────────
+
+let _extendTargetCode = '';
+
+function showExtendModal(code) {
+    _extendTargetCode = code;
+    document.getElementById('extendModalCode').textContent = code;
+    document.getElementById('extendCustomDays').value = '1';
+    new bootstrap.Modal(document.getElementById('extendModal')).show();
+}
+
+async function doExtend(days) {
+    if (!days || days < 1) { alert('请输入有效天数'); return; }
+    const r = await fetch(`/v1/card/admin/${_extendTargetCode}/extend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_password: adminPassword, days: days })
+    });
+    const data = await r.json();
+    bootstrap.Modal.getInstance(document.getElementById('extendModal')).hide();
+    if (r.ok) {
+        showToast('success', '延长成功', data.message);
+        loadCards();
+    } else {
+        showToast('error', '延长失败', data.detail || '操作失败');
+    }
 }
 
 // ── 卡密删除 ─────────────────────────────────────────────────────────────────
